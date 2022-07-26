@@ -715,3 +715,141 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
         final_df_beta.columns = [['tcrRes', 'tcrNum', 'tcrName', 'mhcRes', 'mhcNum', 'mhcName', 'distance', 'loop']]
     
     return(final_df_alpha,final_df_beta)
+
+# This whole bit of code is to break down on a by-residue basis the AIMS Scoring for TCR-MHC Interactions
+def get_germline_breakdown(SCORES,tcr_names,hla_names,mhc_type = 'classI',ScoreAlpha1=True,ScoreAlpha2 = False,
+                           len_weight=False,score_weight=False,clash=False,BADclash = False):
+    # In this, we want to take the scores and identify WHERE
+    # The positive interactions are coming from.
+    # This is for if you want a subset
+    if mhc_type == 'classI':
+        alpha1 = [55,56,59,60,63,66,67,70,74,77,80]
+        alpha2 = [143,144,147,148,149,152,153,156,160,161,164,165,167,168]
+    elif mhc_type == 'classII_alpha':
+        II_alpha_contacts = [51, 53, 55, 56, 58, 59, 62, 63, 66, 69, 70, 73, 74]
+        alpha1 = II_alpha_contacts
+        alpha2 = []
+    elif mhc_type == 'classII_beta':
+        II_beta_contacts = [63, 66, 67, 70, 71, 73, 74, 76, 77, 80, 83, 84, 87, 88, 91, 92]
+        alpha1 = II_beta_contacts
+        alpha2 = []
+    
+    output_hist = np.zeros((len(tcr_names),len(hla_names)))
+    output_df = pandas.DataFrame(output_hist)
+    output_df.columns = [i[0] for i in hla_names]
+    output_df.index = [i[0] for i in tcr_names]
+    First = True
+    for i in hla_names:
+        for j in tcr_names:
+            if First:
+                fin_name = [i[0],j[0]]
+                First = False
+            else:
+                fin_name = np.vstack((fin_name,[i[0],j[0]]))
+    
+    noMatch = []
+    first = True
+    for seq in np.arange(len(SCORES)):
+        lochla = fin_name[seq][0]
+        loctcr = fin_name[seq][1]
+        test_score = SCORES[seq]
+        len1, len2 = np.shape(test_score)
+        save_coords = []
+        for i in np.arange(len1):
+            # Break when you are reaching past the end
+            if i + 2 >= len1:
+                break
+            if ScoreAlpha1:
+                #do it for the alpha1 loop
+                for j in np.arange(len(alpha1)):
+                    # Break when you are past the end
+                    if j + 2 >= len(alpha1):
+                        break
+                    # Looking for contiguous regions
+                    # of some positive interactions
+                    # can change criteria later
+                    test1 = test_score[i,alpha1[j]]
+                    test2 = test_score[i+1,alpha1[j+1]]
+                    test3 = test_score[i+2,alpha1[j+2]]
+                    if clash:
+                        tf1 = (test1 < 0)
+                        tf2 = (test2 < 0)
+                        tf3 = (test3 < 0)
+                    elif BADclash:
+                        # only test tf1
+                        tf1 = (test1 == -2)
+                        tf2 = True
+                        tf3 = True
+                    else:
+                        tf1 = (test1 > 0)
+                        tf2 = (test2 > 0)
+                        tf3 = (test3 > 0)
+                    if tf1 & tf2 & tf3:
+                        # Save only the middle coords
+                        save_coords = save_coords + [[i+1,alpha1[j],alpha1[j+1],alpha1[j+2]]]
+
+                        # Add to a counter using this complicated line
+                        if score_weight:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + (test1+test2+test3)/3
+                        elif BADclash:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + test1
+                        else:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + 1
+            if ScoreAlpha2:
+                # Do it again for the alpha2 loop
+                for j in np.arange(len(alpha2)):
+                    # Break when you are past the end
+                    if j + 2 >= len(alpha2):
+                        break
+                    # Looking for contiguous regions
+                    # of some positive interactions
+                    # can change criteria later
+                    test1 = test_score[i,alpha2[j]]
+                    test2 = test_score[i+1,alpha2[j+1]]
+                    test3 = test_score[i+2,alpha2[j+2]]
+                    if clash:
+                        tf1 = (test1 < 0)
+                        tf2 = (test2 < 0)
+                        tf3 = (test3 < 0)
+                    elif BADclash:
+                        # only test tf1
+                        tf1 = (test1 == -2)
+                        tf2 = True
+                        tf3 = True
+                    else:
+                        tf1 = (test1 > 0)
+                        tf2 = (test2 > 0)
+                        tf3 = (test3 > 0)
+                    if tf1 & tf2 & tf3:
+                        # Save only the middle coords
+                        save_coords = save_coords + [[i+1,alpha2[j],alpha2[j+1],alpha2[j+2]]]
+
+                        # Add to the counter above
+                        if score_weight:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + (test1+test2+test3)/3
+                        elif BADclash:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + test1
+                        else:
+                            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla] + 1
+                            
+        # Before we move on, if you want to, scale all these by the CDR lengths
+        # Obviously based on this simple counting metric, longer CDRs will have
+        # higher interaction scores by default
+        if len_weight:
+            # len1 should give the length of the CDR of interest
+            output_df.loc[loctcr,lochla] = output_df.loc[loctcr,lochla]/len1
+        if save_coords == []:
+            # There were no contiguous matches for a bunch of these sequences!
+            # Save the list of these sequences to be sure
+            noMatch = noMatch + [seq]
+            continue
+            
+        if first:
+            final_coords = save_coords
+            first = False
+        else:
+            final_coords = np.vstack((final_coords,save_coords))
+    if first:
+        return(1,2,3)
+    else:
+        return(output_df,final_coords,noMatch)
