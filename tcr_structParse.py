@@ -55,9 +55,14 @@ def get_chains(struct, mhc_class = 1,mhcID='HLA-DP'):
     alpha_chain = -1
     beta_chain = -1
     if mhc_class == 1:
+        # Due to a bunch of really jacked up PDBs, we need to build in a way to pull out distances when we aren't
+        # selecting the proper chains of the asymmetric units (a bunch of "no contact" PDBs are due to this)
+        mhc_chainList = []
         mhc_chain = -1
     elif mhc_class == 2:
+        mhc_chainListA = []
         mhc_alpha_chain = -1
+        mhc_chainListB = []
         mhc_beta_chain = -1
     alphaMax = 0
     betaMax = 0
@@ -91,11 +96,14 @@ def get_chains(struct, mhc_class = 1,mhcID='HLA-DP'):
         if score > 0:
             if mhc_class == 1:
                 mhc_chain = chainNum
+                mhc_chainList = mhc_chainList + [chainNum]
             else:
                 if classII_chain == 'alpha':
                     mhc_alpha_chain = chainNum
+                    mhc_chainListA = mhc_chainListA + [chainNum]
                 elif classII_chain == 'beta':
                     mhc_beta_chain = chainNum
+                    mhc_chainListB = mhc_chainListB + [chainNum]
             continue
         for tcrA in trav_genes.values:
             temp_name = tcrA[0]
@@ -124,17 +132,13 @@ def get_chains(struct, mhc_class = 1,mhcID='HLA-DP'):
             if score > betaMax:
                 beta_nameF = temp_name
                 betaMax = score
-
+        # We're only going to return ONE TCR. This has worked well thus far
         if alpha_score > 20 and alpha_score >= alphaMax:
             alpha_chain = chainNum
         if beta_score > 20 and beta_score >= betaMax:
             beta_chain = chainNum
-        if mhc_class == 1:
-            if alpha_chain != -1 and beta_chain != -1 and mhc_chain != -1:
-                break
-        elif mhc_class == 2:
-            if alpha_chain != -1 and beta_chain != -1 and mhc_alpha_chain != -1 and mhc_beta_chain != -1:
-                break
+        # ALRIGHT SO A BIG CHANGE HERE. BECAUSE THE NEWER METHOD IS MUCH FASTER
+        # LETS NOT BOTHER "BREAKING". LETS JUST MAKE A LIST OF EVERY MHC and EVERY TCR CHAIN
 
     if alpha_chain == -1:
         print('Cannot find TRAV match!')
@@ -146,16 +150,28 @@ def get_chains(struct, mhc_class = 1,mhcID='HLA-DP'):
         if mhc_chain == -1:
             print('Cannot find MHC match!')
             return ()
-        return (alpha_chain, alpha_nameF, beta_chain, beta_nameF, mhc_chain)
+        return (alpha_chain, alpha_nameF, beta_chain, beta_nameF, mhc_chain,mhc_chainList)
     elif mhc_class == 2:
         if mhc_alpha_chain == -1:
             print('Cannot find MHCalpha match!')
             return ()
         if mhc_beta_chain == -1:
             print('Cannot find MHCbeta match!')
-        return (alpha_chain, alpha_nameF, beta_chain, beta_nameF, mhc_alpha_chain,mhc_beta_chain)
+        return (alpha_chain, alpha_nameF, beta_chain, beta_nameF, mhc_alpha_chain,mhc_beta_chain,mhc_chainListA,mhc_chainListB)
 
-def calc_process_dist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, table, ab='alpha', dist_cutoff=0.35):
+def calc_process_classIdist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, 
+                         table, ab='alpha', dist_cutoff=0.35,period=False):
+    # New section of script to try to see if a new method would work
+    # Define the MHC refDF
+    mhc_top = struct.topology.select('chainid == ' + str(mhc_chain))
+    chain_sub = table[(table['chainID'] == mhc_chain)].reset_index(drop=True)
+    struct_serial_df = pandas.DataFrame(mhc_top,columns=['struct_ser'])
+    mhc_refDF = pandas.concat([chain_sub,struct_serial_df],axis=1)
+    # Define the TCR refDF
+    tcr_top = struct.topology.select('chainid == ' + str(tcr_chain))
+    tcr_tab = table[(table['chainID'] == tcr_chain)].reset_index(drop=True)
+    tcr_serial_df = pandas.DataFrame(tcr_top,columns=['struct_ser'])
+    tcr_refDF = pandas.concat([tcr_tab,tcr_serial_df],axis=1)
 
     # Try to edit this to make sure our numbers match from the get-go
     alpha1 = [55,56,59,60,63,66,67,70,74,77,80]
@@ -194,10 +210,17 @@ def calc_process_dist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, tab
             tcr_cdr2Start = tcr_sequence.find(trbv_12seq[1])
             if tcr_cdr1Start == -1:
                 tcr_cdr1Start = tcr_sequence.find(trbv_12seq[0][0:3])
+            if tcr_cdr1Start == -1:
+                aa = pairwise2.align.localms(trbv_12seq[0], tcr_sequence, 0.5, -0.1, -5, -0.5)
+                tcr_cdr1Start = aa[0][0].find(trbv_12seq[0])
             if tcr_cdr2Start == -1:
                 tcr_cdr2Start = tcr_sequence.find(trbv_12seq[1][0:3])
+            if tcr_cdr2Start == -1:
+                aa = pairwise2.align.localms(trbv_12seq[1], tcr_sequence, 0.5, -0.1, -5, -0.5)
+                tcr_cdr2Start = aa[0][0].find(trbv_12seq[1])
             tcr_cdr1End = tcr_cdr1Start + len(trbv_12seq[0])
             tcr_cdr2End = tcr_cdr2Start + len(trbv_12seq[1])
+
     mhc_sub = [ residue for residue in struct.topology.chain(mhc_chain).residues ]
     seq_only3 = [ str(i)[:3] for i in mhc_sub ]
     num_only3 = [ str(i)[3:] for i in mhc_sub ]
@@ -207,99 +230,63 @@ def calc_process_dist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, tab
     aa = pairwise2.align.localms(hlaA_0101,mhc_sequence,1.0, -0.1, -5,-0.5)
     num_shift = aa[0][0].find('SHSMRYF')
     resid_shift = 1 - int(num_only3[0])
-    
+
     cdr1_len = tcr_cdr1End - tcr_cdr1Start
     cdr2_len = tcr_cdr2End - tcr_cdr2Start
-    tcrdiff = 0
-    tcrdiffCount = 0
-    for i in np.arange(cdr1_len):
-        mdsel = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[(tcr_cdr1Start + i)] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == tcr_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(num_only1[(tcr_cdr1Start + i)]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != tcrdiff:
-            tcrdiffCount += 1
-            tcrdiff = newdiff
 
-    for i in np.arange(cdr2_len):
-        mdsel = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[(tcr_cdr2Start + i)] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == tcr_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(num_only1[(tcr_cdr2Start + i)]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != tcrdiff:
-            tcrdiffCount += 1
-            tcrdiff = newdiff
-
-    mhcdiff = 0
-    mhcdiffCount = 0
-    for i in np.arange(len(mhc_sequence)):
-        mdsel = struct.topology.select('chainid == ' + str(mhc_chain) + ' and (residue ' + num_only3[i] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == mhc_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(num_only3[i]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != mhcdiff:
-            mhcdiffCount += 1
-            mhcdiff = newdiff
-    if mhcdiffCount != 1:
-        print('Mid-sel register shift in MHC')
-        return('BadReg')
-
-    if tcrdiffCount != 1:
-        print('Mid-sel register shift in TCR')
-        return('BadReg')
+    #############################################################################################################################
+    # ALRIGHT SO WE REMOVED ALL OF THE REGISTER IDENTIFICATION STUFF. TRY TO REPLACE IT WITH A LOOKUP DATAFRAME
+    # WHERE WE WERE CALLING FOR DIFFERENCES, INSTEAD CALL OUT THE EXACT MATCHES FURTHER DOWN
+    #############################################################################################################################
 
     cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and sidechain')
     cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and sidechain')
-    
+
     mhc_struct = struct.topology.select('chainid == ' + str(mhc_chain) + ' and sidechain')
     cdr1_mhc = list(itertools.product(cdr1, mhc_struct))
     cdr2_mhc = list(itertools.product(cdr2, mhc_struct))
 
     if len(cdr1) > 0:
-        cdr1_dists = md.compute_distances(struct, atom_pairs=cdr1_mhc, periodic=False)
+        cdr1_dists = md.compute_distances(struct, atom_pairs=cdr1_mhc, periodic=period)
     else:
-        return 'BadSel'
+        print('BadSel CDR1'+ab)
     if len(cdr2) > 0:
-        cdr2_dists = md.compute_distances(struct, atom_pairs=cdr2_mhc, periodic=False)
+        cdr2_dists = md.compute_distances(struct, atom_pairs=cdr2_mhc, periodic=period)
     else:
-        return 'BadSel'
+        print('BadSel CDR2'+ab)
     min_dist = dist_cutoff
     cdr1_pos = []
     cdr1_seldist = []
-    for i in np.arange(len(cdr1_dists[0])):
-        if cdr1_dists[0][i] < min_dist:
-            cdr1_pos = cdr1_pos + [i]
-            cdr1_seldist = cdr1_seldist + [cdr1_dists[0][i]]
 
+    if len(cdr1) > 0:
+        for i in np.arange(len(cdr1_dists[0])):
+            if cdr1_dists[0][i] < min_dist:
+                cdr1_pos = cdr1_pos + [i]
+                cdr1_seldist = cdr1_seldist + [cdr1_dists[0][i]]
+    
     cdr2_pos = []
     cdr2_seldist = []
-    for i in np.arange(len(cdr2_dists[0])):
-        if cdr2_dists[0][i] < min_dist:
-            cdr2_pos = cdr2_pos + [i]
-            cdr2_seldist = cdr2_seldist + [cdr2_dists[0][i]]
+    if len(cdr2) > 0:
+        for i in np.arange(len(cdr2_dists[0])):
+            if cdr2_dists[0][i] < min_dist:
+                cdr2_pos = cdr2_pos + [i]
+                cdr2_seldist = cdr2_seldist + [cdr2_dists[0][i]]
 
+    #################################################################################################
+    #################################################################################################
     first = True
     for k in np.arange(len(cdr1_pos)):
         pairs = cdr1_pos[k]
-        tcr_index = cdr1_mhc[pairs][0] - tcrdiff[0]
-        mhc_index = cdr1_mhc[pairs][1] - mhcdiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr1_mhc[pairs][0]
+        mhc_index = cdr1_mhc[pairs][1]
+        # Again hopefully this should work...
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhc_refDF[(mhc_refDF['struct_ser'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
         # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -325,13 +312,22 @@ def calc_process_dist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, tab
             first = False
         else:
             pre_df = np.vstack((pre_df, np.hstack((tcr_ID, mhc_ID, cdr1_seldist[k], 'cdr1' + ab[0]))))
+    #################################################################################################
+    #################################################################################################
 
     for k in np.arange(len(cdr2_pos)):
         pairs = cdr2_pos[k]
-        tcr_index = cdr2_mhc[pairs][0] - tcrdiff[0]
-        mhc_index = cdr2_mhc[pairs][1] - mhcdiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr2_mhc[pairs][0]
+        mhc_index = cdr2_mhc[pairs][1]
+        # This is really the only difference between old and new script.
+        # Just find the "struct ser" and go with it... Might need a check for multiple hits, if there are any?
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhc_refDF[(mhc_refDF['struct_ser'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
         # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -359,16 +355,33 @@ def calc_process_dist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, tab
             pre_df = np.vstack((pre_df, np.hstack((tcr_ID, mhc_ID, cdr2_seldist[k], 'cdr2' + ab[0]))))
 
     if first == True:
-        return ()
+        #print("No contacts found")
+        return()
     final_df = pandas.DataFrame(pre_df)
     if np.shape(final_df)[1] != 8:
         final_df = np.transpose(final_df)
     final_df.columns = [['tcrRes', 'tcrNum', 'tcrName', 'mhcRes', 'mhcNum', 'mhcName', 'distance', 'loop']]
-    return final_df
-# okay decompiling tcr_structParse.pyc
+    return(final_df)
+    # okay decompiling tcr_structParse.pyc
 
 def calc_process_classIIdist(struct, tcr_chain, mhc_alpha_chain, mhc_beta_chain, alpha_nameF, beta_nameF,
-table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
+table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP',period=False):
+    # New section to try to get our new dataframe lookup (faster and more accurate)
+    # distance processor that already works well for class I
+    mhc_topA = struct.topology.select('chainid == ' + str(mhc_alpha_chain))
+    structA_serial_df = pandas.DataFrame(mhc_topA,columns=['struct_serA'])
+    mhc_topB = struct.topology.select('chainid == ' + str(mhc_beta_chain))
+    structB_serial_df = pandas.DataFrame(mhc_topB,columns=['struct_serB'])
+    chainA_sub = table[(table['chainID'] == mhc_alpha_chain)].reset_index(drop=True)
+    chainB_sub = table[(table['chainID'] == mhc_beta_chain)].reset_index(drop=True)
+    mhcA_refDF = pandas.concat([chainA_sub,structA_serial_df],axis=1)
+    mhcB_refDF = pandas.concat([chainB_sub,structB_serial_df],axis=1)
+    # Define the TCR refDF
+    tcr_top = struct.topology.select('chainid == ' + str(tcr_chain))
+    tcr_tab = table[(table['chainID'] == tcr_chain)].reset_index(drop=True)
+    tcr_serial_df = pandas.DataFrame(tcr_top,columns=['struct_ser'])
+    tcr_refDF = pandas.concat([tcr_tab,tcr_serial_df],axis=1)
+
     trav_cdrs = pandas.read_csv('trav_human_cdrs.csv')
     trbv_cdrs = pandas.read_csv('trbv_human_cdrs.csv')
     trav_12seq = trav_cdrs[(trav_cdrs['gene'] == alpha_nameF)][['cdr1', 'cdr2']].values[0]
@@ -438,86 +451,14 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
     
     cdr1_len = tcr_cdr1End - tcr_cdr1Start
     cdr2_len = tcr_cdr2End - tcr_cdr2Start
-    tcrdiff = 0
-    tcrdiffCount = 0
-    for i in np.arange(cdr1_len):
-        mdsel = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[(tcr_cdr1Start + i)] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == tcr_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(num_only1[(tcr_cdr1Start + i)]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != tcrdiff:
-            tcrdiffCount += 1
-            tcrdiff = newdiff
-
-    for i in np.arange(cdr2_len):
-        mdsel = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[(tcr_cdr2Start + i)] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == tcr_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(num_only1[(tcr_cdr2Start + i)]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != tcrdiff:
-            tcrdiffCount += 1
-            tcrdiff = newdiff
-
-
-    alphadiff = 0; betadiff = 0
-    alphadiffCount = 0; betadiffCount = 0
-    for i in np.arange(len(mhcalpha_sequence)):
-        # Why TF are any of these pdbs numbered with a -1 resid? unclear
-        if mhcalpha_numonly3[i].find('-') != -1:
-            continue
-        mdsel = struct.topology.select('chainid == ' + str(mhc_alpha_chain) + ' and (residue ' + mhcalpha_numonly3[i] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == mhc_alpha_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(mhcalpha_numonly3[i]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != alphadiff:
-            alphadiffCount += 1
-            alphadiff = newdiff
-    if alphadiffCount != 1:
-        print('Mid-sel register shift in MHCalpha')
-        return('BadReg')
-
-    for i in np.arange(len(mhcbeta_sequence)):
-        # Why TF are any of these pdbs numbered with a -1 resid? unclear
-        if mhcbeta_numonly3[i].find('-') != -1:
-            continue
-        mdsel = struct.topology.select('chainid == ' + str(mhc_beta_chain) + ' and (residue ' + mhcbeta_numonly3[i] + ') and name CA')
-        CAs = table[(table['name'] == 'CA')]
-        chainCA = CAs[(CAs['chainID'] == mhc_beta_chain)]
-        tabsel = chainCA[(chainCA['resSeq'] == int(mhcbeta_numonly3[i]))]['serial'].values
-        if len(mdsel) > 1:
-            mdsel = mdsel[0]
-        if len(tabsel) > 1:
-            tabsel = tabsel[0]
-        newdiff = mdsel - tabsel
-        if newdiff != betadiff:
-            betadiffCount += 1
-            betadiff = newdiff
-    if betadiffCount != 1:
-        print('Mid-sel register shift in MHCbeta')
-        return('BadReg')
-
-    if tcrdiffCount != 1:
-        print('Mid-sel register shift in TCR')
-        return('BadReg')
+    
+    #############################################################################################################################
+    # ALRIGHT SO WE REMOVED ALL OF THE REGISTER IDENTIFICATION STUFF. TRY TO REPLACE IT WITH A LOOKUP DATAFRAME
+    # WHERE WE WERE CALLING FOR DIFFERENCES, INSTEAD CALL OUT THE EXACT MATCHES FURTHER DOWN
+    #############################################################################################################################
 
     cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and sidechain')
     cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and sidechain')
-    
 
     mhc_alpha_struct = struct.topology.select('chainid == ' + str(mhc_alpha_chain) + ' and sidechain')
     mhc_beta_struct = struct.topology.select('chainid == ' + str(mhc_beta_chain) + ' and sidechain')
@@ -527,13 +468,13 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
     cdr2_mhcbeta = list(itertools.product(cdr2, mhc_beta_struct))
     
     if len(cdr1) > 0:
-        cdr1_dists_alpha = md.compute_distances(struct, atom_pairs=cdr1_mhcalpha, periodic=False)
-        cdr1_dists_beta = md.compute_distances(struct, atom_pairs=cdr1_mhcbeta, periodic=False)
+        cdr1_dists_alpha = md.compute_distances(struct, atom_pairs=cdr1_mhcalpha, periodic=period)
+        cdr1_dists_beta = md.compute_distances(struct, atom_pairs=cdr1_mhcbeta, periodic=period)
     else:
         return 'BadSel'
     if len(cdr2) > 0:
-        cdr2_dists_alpha = md.compute_distances(struct, atom_pairs=cdr2_mhcalpha, periodic=False)
-        cdr2_dists_beta = md.compute_distances(struct, atom_pairs=cdr2_mhcbeta, periodic=False)
+        cdr2_dists_alpha = md.compute_distances(struct, atom_pairs=cdr2_mhcalpha, periodic=period)
+        cdr2_dists_beta = md.compute_distances(struct, atom_pairs=cdr2_mhcbeta, periodic=period)
     else:
         return 'BadSel'
 
@@ -541,36 +482,48 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
     cdr1_pos_alpha = []; cdr1_seldist_alpha = []
     cdr1_pos_beta = []; cdr1_seldist_beta = []
 
-    for i in np.arange(len(cdr1_dists_alpha[0])):
-        if cdr1_dists_alpha[0][i] < min_dist:
-            cdr1_pos_alpha = cdr1_pos_alpha + [i]
-            cdr1_seldist_alpha = cdr1_seldist_alpha + [cdr1_dists_alpha[0][i]]
+    if len(cdr1) > 0:
+        for i in np.arange(len(cdr1_dists_alpha[0])):
+            if cdr1_dists_alpha[0][i] < min_dist:
+                cdr1_pos_alpha = cdr1_pos_alpha + [i]
+                cdr1_seldist_alpha = cdr1_seldist_alpha + [cdr1_dists_alpha[0][i]]
 
-    for i in np.arange(len(cdr1_dists_beta[0])):
-        if cdr1_dists_beta[0][i] < min_dist:
-            cdr1_pos_beta = cdr1_pos_beta + [i]
-            cdr1_seldist_beta = cdr1_seldist_beta + [cdr1_dists_beta[0][i]]
+        for i in np.arange(len(cdr1_dists_beta[0])):
+            if cdr1_dists_beta[0][i] < min_dist:
+                cdr1_pos_beta = cdr1_pos_beta + [i]
+                cdr1_seldist_beta = cdr1_seldist_beta + [cdr1_dists_beta[0][i]]
 
     cdr2_pos_alpha = []; cdr2_seldist_alpha = []
     cdr2_pos_beta = []; cdr2_seldist_beta = []
 
-    for i in np.arange(len(cdr2_dists_alpha[0])):
-        if cdr2_dists_alpha[0][i] < min_dist:
-            cdr2_pos_alpha = cdr2_pos_alpha + [i]
-            cdr2_seldist_alpha = cdr2_seldist_alpha + [cdr2_dists_alpha[0][i]]
+    if len(cdr2) > 0:
+        for i in np.arange(len(cdr2_dists_alpha[0])):
+            if cdr2_dists_alpha[0][i] < min_dist:
+                cdr2_pos_alpha = cdr2_pos_alpha + [i]
+                cdr2_seldist_alpha = cdr2_seldist_alpha + [cdr2_dists_alpha[0][i]]
 
-    for i in np.arange(len(cdr2_dists_beta[0])):
-        if cdr2_dists_beta[0][i] < min_dist:
-            cdr2_pos_beta = cdr2_pos_beta + [i]
-            cdr2_seldist_beta = cdr2_seldist_beta + [cdr2_dists_beta[0][i]]
+        for i in np.arange(len(cdr2_dists_beta[0])):
+            if cdr2_dists_beta[0][i] < min_dist:
+                cdr2_pos_beta = cdr2_pos_beta + [i]
+                cdr2_seldist_beta = cdr2_seldist_beta + [cdr2_dists_beta[0][i]]
 
+    # The big changes are in this section, but really we're just changing how we find the TCRID
+    # And the MHCID. Everything below that stays the same
+    #################################################################################################
+    #################################################################################################
     first_alpha = True
     for k in np.arange(len(cdr1_pos_alpha)):
         pairs = cdr1_pos_alpha[k]
-        tcr_index = cdr1_mhcalpha[pairs][0] - tcrdiff[0]
-        mhc_index = cdr1_mhcalpha[pairs][1] - alphadiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr1_mhcalpha[pairs][0]
+        mhc_index = cdr1_mhcalpha[pairs][1]
+        # These next 7 lines are the only new bits
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhcA_refDF[(mhcA_refDF['struct_serA'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
           # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -600,10 +553,15 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
     first_beta = True
     for k in np.arange(len(cdr1_pos_beta)):
         pairs = cdr1_pos_beta[k]
-        tcr_index = cdr1_mhcbeta[pairs][0] - tcrdiff[0]
-        mhc_index = cdr1_mhcbeta[pairs][1] - betadiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr1_mhcbeta[pairs][0]
+        mhc_index = cdr1_mhcbeta[pairs][1]
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhcB_refDF[(mhcB_refDF['struct_serB'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
          # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -632,10 +590,15 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
 
     for k in np.arange(len(cdr2_pos_alpha)):
         pairs = cdr2_pos_alpha[k]
-        tcr_index = cdr2_mhcalpha[pairs][0] - tcrdiff[0]
-        mhc_index = cdr2_mhcalpha[pairs][1] - alphadiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr2_mhcalpha[pairs][0]
+        mhc_index = cdr2_mhcalpha[pairs][1]
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhcA_refDF[(mhcA_refDF['struct_serA'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
          # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -664,10 +627,15 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
 
     for k in np.arange(len(cdr2_pos_beta)):
         pairs = cdr2_pos_beta[k]
-        tcr_index = cdr2_mhcbeta[pairs][0] - tcrdiff[0]
-        mhc_index = cdr2_mhcbeta[pairs][1] - betadiff[0]
-        tcr_ID = table[(table['serial'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
-        mhc_ID = table[(table['serial'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        tcr_index = cdr2_mhcbeta[pairs][0]
+        mhc_index = cdr2_mhcbeta[pairs][1]
+        tcr_ID = tcr_refDF[(tcr_refDF['struct_ser'] == tcr_index)][['resName', 'resSeq', 'name']].values[0]
+        mhc_ID = mhcB_refDF[(mhcB_refDF['struct_serB'] == mhc_index)][['resName', 'resSeq', 'name']].values[0]
+        # Yea check for multiple hits just in case
+        if np.shape(np.shape(tcr_ID))[0] != 1:
+            print('Mutliple indices for one atom')
+        if np.shape(np.shape(mhc_ID))[0] != 1:
+            print('Mutliple indices for one atom')
 
          # Try to edit the 'resSeq'. Make it match the alpha1/2 numbering we've had
         ###################################
@@ -695,7 +663,7 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP'):
             pre_df_beta = np.vstack((pre_df_beta, np.hstack((tcr_ID, mhc_ID, cdr2_seldist_beta[k], 'cdr2' + ab[0]))))
 
     if first_alpha == True and first_beta == True:
-        print('no found contacts')
+        #print('no found contacts')
         return ()
 
     if first_alpha:

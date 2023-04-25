@@ -1,7 +1,12 @@
 # PRESTO - PaRsEr of Solved Tcr cOmplexes
 An automated pipeline for the analysis of TCR-pMHC structures deposited to the PDB
 
-You can run the file parser_main.py which will then call some of the functions in tcr_structParse.py
+Newest version (04/25/23) has been updated to be more robust against poorly deposited PDBs. Now able to measure atomic distances
+for all class II complex structures and 93% of class I complex structures. These distances are now included to a 6 Angstrom cutoff 
+for the PDBs deposited into the TCR3D database thus far. So you don't need to run the parser if you don't want to.
+
+If you'd like to analyze TCR-MHC complexes with your own specifications, you can edit and run the parser_main.py code, which will then 
+call some of the functions in tcr_structParse.py . From there you can use the jupyter notebook to analyze the data.
 
 Packages:
 

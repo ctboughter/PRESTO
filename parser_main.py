@@ -14,7 +14,14 @@ from matplotlib import rcParams
 import tcr_structParse as tcrParse
 
 # Define MHC class 1 or 2
-mhc_class = 1
+mhc_class = 2
+
+####################################################################################################
+# SO RIGHT NOW THERE ARE A CLASS OF TCRs WE CANT ANALYZE
+# ALL FROM Dr. BRIAN BAKER'S LAB [Class I]
+# ISSUE IS THAT ONLY THE ASYMMETRIC UNIT IS SUPPLIED IN THE PDB BY DEFAULT,
+# NOT THE BIOLOGICAL ASSEMBLY. WE SOMEHOW NEED A WAY TO MEASURE PERIODIC BOUNDARY DISTANCES...
+####################################################################################################
 
 # Load in a TCR3D metadata file to get out PDB names
 if mhc_class == 1:
@@ -31,6 +38,7 @@ print('Is when this script will end')
 for dataset in np.arange(len(human_df)):
     # Pull out PDB name
     pdb = human_df['PDB<BR>ID'].values[dataset]
+
     # Pull out TRAV name for later reference
     trav = human_df['TRAV<BR>gene'].values[dataset]
     # Pull out TRBV name for later reference
@@ -66,10 +74,11 @@ for dataset in np.arange(len(human_df)):
         continue
     else:
         if mhc_class == 1:
-            alpha_chain,alpha_nameF,beta_chain,beta_nameF,mhc_chain = xxx
+            alpha_chain,alpha_nameF,beta_chain,beta_nameF,mhc_chain,mhc_chainList = xxx
         elif mhc_class == 2:
-            alpha_chain,alpha_nameF,beta_chain,beta_nameF,mhc_alpha_chain,mhc_beta_chain = xxx
-            
+            alpha_chain,alpha_nameF,beta_chain,beta_nameF,mhc_alpha_chain,mhc_beta_chain,mhc_chainListA,mhc_chainListB = xxx
+    
+
     # Go back and double check if we have TRAV/TRBV mismatches
     if alpha_nameF != trav:
         print('ERROR: TRAV mismatch PDB: '+pdb)
@@ -85,15 +94,72 @@ for dataset in np.arange(len(human_df)):
     # Really annoying there are so many inputs to this script, but leave it be for now
     # These scripts automatically pull out sidechain-sidechain interactions with some
     # custom restrictions. Check these scripts for details
+
+    # PER REVIEWER COMMENTS WE HAVE CHANGED THE CUTOFFS FROM 3.5A to 6A 04/03/23
+    # If we want, we can then use the notebook post-processing to change this a bit.
+
     if mhc_class == 1:
-        alpha_df = tcrParse.calc_process_dist(struct,alpha_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.35)
-        beta_df = tcrParse.calc_process_dist(struct,beta_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.35)
+        alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6)
+        beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6)
+        # Try to cycle through all the different possible 
+        if len(alpha_df) == 0 and len(beta_df) == 0:
+            for newChain in mhc_chainList:
+                alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6)
+                beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6)
+                if len(alpha_df) != 0 or len(beta_df) != 0:
+                    mhc_chain = newChain
+                    print(mhc_chain)
+                    break
+            # IF YOU STILL CANT FIND IT, TRY AGAIN WITH PBCs ON!!!!
+            if len(alpha_df) == 0 and len(beta_df) == 0:
+                for newChain in mhc_chainList:
+                    alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,period=True)
+                    beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,period=True)
+                    if len(alpha_df) != 0 or len(beta_df) != 0:
+                        mhc_chain = newChain
+                        print(mhc_chain)
+                        break
+            
+
     elif mhc_class == 2:
         alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,mhc_alpha_chain,mhc_beta_chain,
-                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.35,mhcID = mhcID)
+                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID)
         beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,mhc_alpha_chain,mhc_beta_chain,
-                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.35,mhcID = mhcID)
-        
+                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID)
+
+        if len(alpha_output) == 0 and len(beta_output) == 0:
+            found = False
+            for newChainA in mhc_chainListA:
+                for newChainB in mhc_chainListB:
+                    alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,newChainA,newChainB,
+                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID)
+                    beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,newChainA,newChainB,
+                                                                    alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID)
+                if len(alpha_output) != 0 and len(beta_output) != 0:
+                    mhc_alpha_chain = newChainA
+                    mhc_beta_chain = newChainB
+                    print(mhc_alpha_chain,mhc_beta_chain)
+                    found = True
+                    break
+                if found:
+                    break
+            # IF YOU STILL CANT FIND IT, TRY AGAIN WITH PBCs ON!!!!
+            if len(alpha_output) == 0 and len(beta_output) == 0:
+                for newChainA in mhc_chainListA:
+                    for newChainB in mhc_chainListB:
+                        alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,newChainA,newChainB,
+                                                            alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID,period=True)
+                        beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,newChainA,newChainB,
+                                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID,period=True)
+                        if len(alpha_output) != 0 and len(beta_output) != 0:
+                            mhc_alpha_chain = newChainA
+                            mhc_beta_chain = newChainB
+                            print(mhc_alpha_chain,mhc_beta_chain)
+                            found = True
+                            break
+                    if found:
+                        break
+
         # Cancel the loop if we get a BadReg error
         # BadReg means there are a bunch of weird breaks and mismatches in the PDB
         # Hopefully can rectify these issues later on
@@ -149,6 +215,7 @@ for dataset in np.arange(len(human_df)):
             beta_df = []
         
         if len(alpha_output) == 0 and len(beta_output) == 0:
+            print("No contacts found for PDB " + pdb)
             continue
 
     # Most of these that "don't have germline contacts"
