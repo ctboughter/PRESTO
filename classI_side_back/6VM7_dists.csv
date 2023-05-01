@@ -1,0 +1,4 @@
+tcrRes,tcrNum,tcrName,mhcRes,mhcNum,mhcName,distance,loop
+LYS,59,NZ,MET,138,CA,0.5761366486549377,cdr2a
+LYS,59,NZ,MET,138,C,0.5969176292419434,cdr2a
+LYS,59,NZ,MET,138,O,0.5467017292976379,cdr2a

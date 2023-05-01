@@ -1,0 +1,3 @@
+tcrRes,tcrNum,tcrName,mhcRes,mhcNum,mhcName,distance,loop
+VAL,50,O,GLN,70,O,0.5991742610931396,cdr2b
+VAL,50,O,VAL,74,CA,0.5808339715003967,cdr2b

@@ -15,6 +15,8 @@ import tcr_structParse as tcrParse
 
 # Define MHC class 1 or 2
 mhc_class = 2
+tcr_sel = 'backbone'
+mhc_sel = 'sidechain'
 
 ####################################################################################################
 # SO RIGHT NOW THERE ARE A CLASS OF TCRs WE CANT ANALYZE
@@ -99,13 +101,17 @@ for dataset in np.arange(len(human_df)):
     # If we want, we can then use the notebook post-processing to change this a bit.
 
     if mhc_class == 1:
-        alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6)
-        beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6)
+        alpha_df = tcrParse.calc_process_classIdist(struct,alpha_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,
+                                                 tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
+        beta_df = tcrParse.calc_process_classIdist(struct,beta_chain,mhc_chain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,
+                                                tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
         # Try to cycle through all the different possible 
         if len(alpha_df) == 0 and len(beta_df) == 0:
             for newChain in mhc_chainList:
-                alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6)
-                beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6)
+                alpha_df = tcrParse.calc_process_classIdist(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,
+                                                         tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
+                beta_df = tcrParse.calc_process_classIdist(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,
+                                                        tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                 if len(alpha_df) != 0 or len(beta_df) != 0:
                     mhc_chain = newChain
                     print(mhc_chain)
@@ -113,8 +119,10 @@ for dataset in np.arange(len(human_df)):
             # IF YOU STILL CANT FIND IT, TRY AGAIN WITH PBCs ON!!!!
             if len(alpha_df) == 0 and len(beta_df) == 0:
                 for newChain in mhc_chainList:
-                    alpha_df = tcrParse.calc_process_distNEW(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,period=True)
-                    beta_df = tcrParse.calc_process_distNEW(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,period=True)
+                    alpha_df = tcrParse.calc_process_classIdist(struct,alpha_chain,newChain,alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,period=True,
+                                                             tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
+                    beta_df = tcrParse.calc_process_classIdist(struct,beta_chain,newChain,alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,period=True,
+                                                            tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                     if len(alpha_df) != 0 or len(beta_df) != 0:
                         mhc_chain = newChain
                         print(mhc_chain)
@@ -123,18 +131,22 @@ for dataset in np.arange(len(human_df)):
 
     elif mhc_class == 2:
         alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,mhc_alpha_chain,mhc_beta_chain,
-                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID)
+                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID,
+                                                         tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
         beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,mhc_alpha_chain,mhc_beta_chain,
-                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID)
+                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID,
+                                                        tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
 
         if len(alpha_output) == 0 and len(beta_output) == 0:
             found = False
             for newChainA in mhc_chainListA:
                 for newChainB in mhc_chainListB:
                     alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,newChainA,newChainB,
-                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID)
+                                                         alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID,
+                                                         tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                     beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,newChainA,newChainB,
-                                                                    alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID)
+                                                                    alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID,
+                                                                    tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                 if len(alpha_output) != 0 and len(beta_output) != 0:
                     mhc_alpha_chain = newChainA
                     mhc_beta_chain = newChainB
@@ -148,9 +160,11 @@ for dataset in np.arange(len(human_df)):
                 for newChainA in mhc_chainListA:
                     for newChainB in mhc_chainListB:
                         alpha_output = tcrParse.calc_process_classIIdist(struct,alpha_chain,newChainA,newChainB,
-                                                            alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID,period=True)
+                                                            alpha_nameF,beta_nameF,table,ab='alpha',dist_cutoff = 0.6,mhcID = mhcID,period=True,
+                                                            tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                         beta_output = tcrParse.calc_process_classIIdist(struct,beta_chain,newChainA,newChainB,
-                                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID,period=True)
+                                                                        alpha_nameF,beta_nameF,table,ab='beta',dist_cutoff = 0.6,mhcID = mhcID,period=True,
+                                                                        tcr_groupsel=tcr_sel,mhc_groupsel=mhc_sel)
                         if len(alpha_output) != 0 and len(beta_output) != 0:
                             mhc_alpha_chain = newChainA
                             mhc_beta_chain = newChainB

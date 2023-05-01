@@ -1,0 +1,4 @@
+tcrRes,tcrNum,tcrName,mhcRes,mhcNum,mhcName,distance,loop
+TYR,37,CA,ALA,148,O,0.5000873804092407,cdr1a
+TYR,37,C,ALA,148,O,0.5741692781448364,cdr1a
+TYR,37,O,ALA,148,O,0.5461204648017883,cdr1a

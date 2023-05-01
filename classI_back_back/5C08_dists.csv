@@ -1,0 +1,4 @@
+tcrRes,tcrNum,tcrName,mhcRes,mhcNum,mhcName,distance,loop
+ILE,55,O,ARG,63,CA,0.5101186037063599,cdr2b
+ILE,55,O,ARG,63,C,0.5974489450454712,cdr2b
+ILE,55,O,ARG,63,O,0.5882420539855957,cdr2b

@@ -1,0 +1,8 @@
+tcrRes,tcrNum,tcrName,mhcRes,mhcNum,mhcName,distance,loop,mhc_chain
+ASN,30,CA,THR,84,CA,0.5396764874458313,cdr1a,mhc_beta
+ASN,30,C,THR,84,CA,0.583782434463501,cdr1a,mhc_beta
+ASN,30,O,THR,84,CA,0.5691129565238953,cdr1a,mhc_beta
+SER,51,O,ALA,80,CA,0.5172733664512634,cdr2a,mhc_beta
+SER,51,O,ALA,80,C,0.5942094922065735,cdr2a,mhc_beta
+SER,51,O,ALA,80,O,0.5721186995506287,cdr2a,mhc_beta
+SER,51,O,ASP,83,CA,0.5916035771369934,cdr2a,mhc_beta

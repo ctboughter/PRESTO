@@ -159,8 +159,8 @@ def get_chains(struct, mhc_class = 1,mhcID='HLA-DP'):
             print('Cannot find MHCbeta match!')
         return (alpha_chain, alpha_nameF, beta_chain, beta_nameF, mhc_alpha_chain,mhc_beta_chain,mhc_chainListA,mhc_chainListB)
 
-def calc_process_classIdist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF, 
-                         table, ab='alpha', dist_cutoff=0.35,period=False):
+def calc_process_classIdist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_nameF,table,mhc_groupsel='sidechain',tcr_groupsel='sidechain',
+                         ab='alpha', dist_cutoff=0.35,period=False):
     # New section of script to try to see if a new method would work
     # Define the MHC refDF
     mhc_top = struct.topology.select('chainid == ' + str(mhc_chain))
@@ -239,10 +239,10 @@ def calc_process_classIdist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_name
     # WHERE WE WERE CALLING FOR DIFFERENCES, INSTEAD CALL OUT THE EXACT MATCHES FURTHER DOWN
     #############################################################################################################################
 
-    cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and sidechain')
-    cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and sidechain')
+    cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and '+tcr_groupsel)
+    cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and '+tcr_groupsel)
 
-    mhc_struct = struct.topology.select('chainid == ' + str(mhc_chain) + ' and sidechain')
+    mhc_struct = struct.topology.select('chainid == ' + str(mhc_chain) + ' and '+mhc_groupsel)
     cdr1_mhc = list(itertools.product(cdr1, mhc_struct))
     cdr2_mhc = list(itertools.product(cdr2, mhc_struct))
 
@@ -365,7 +365,7 @@ def calc_process_classIdist(struct, tcr_chain, mhc_chain, alpha_nameF, beta_name
     # okay decompiling tcr_structParse.pyc
 
 def calc_process_classIIdist(struct, tcr_chain, mhc_alpha_chain, mhc_beta_chain, alpha_nameF, beta_nameF,
-table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP',period=False):
+table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP',period=False,mhc_groupsel='sidechain',tcr_groupsel='sidechain'):
     # New section to try to get our new dataframe lookup (faster and more accurate)
     # distance processor that already works well for class I
     mhc_topA = struct.topology.select('chainid == ' + str(mhc_alpha_chain))
@@ -457,11 +457,11 @@ table, ab='alpha', dist_cutoff=0.35,mhcID = 'HLA-DP',period=False):
     # WHERE WE WERE CALLING FOR DIFFERENCES, INSTEAD CALL OUT THE EXACT MATCHES FURTHER DOWN
     #############################################################################################################################
 
-    cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and sidechain')
-    cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and sidechain')
+    cdr1 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr1Start] + ' to ' + num_only1[tcr_cdr1End] + ') and '+tcr_groupsel)
+    cdr2 = struct.topology.select('chainid == ' + str(tcr_chain) + ' and (residue ' + num_only1[tcr_cdr2Start] + ' to ' + num_only1[tcr_cdr2End] + ') and '+tcr_groupsel)
 
-    mhc_alpha_struct = struct.topology.select('chainid == ' + str(mhc_alpha_chain) + ' and sidechain')
-    mhc_beta_struct = struct.topology.select('chainid == ' + str(mhc_beta_chain) + ' and sidechain')
+    mhc_alpha_struct = struct.topology.select('chainid == ' + str(mhc_alpha_chain) + ' and '+mhc_groupsel)
+    mhc_beta_struct = struct.topology.select('chainid == ' + str(mhc_beta_chain) + ' and '+mhc_groupsel)
     cdr1_mhcalpha = list(itertools.product(cdr1, mhc_alpha_struct))
     cdr1_mhcbeta = list(itertools.product(cdr1, mhc_beta_struct))
     cdr2_mhcalpha = list(itertools.product(cdr2, mhc_alpha_struct))
